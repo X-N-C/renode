@@ -1,5 +1,5 @@
 ﻿//
-// Copyright (c) 2010-2020 Antmicro
+// Copyright (c) 2010-2021 Antmicro
 //
 // This file is licensed under the MIT License.
 // Full license text is available in 'licenses/MIT.txt'.
@@ -24,8 +24,10 @@ namespace Antmicro.Renode.Peripherals.Verilated
 {
     public class BaseDoubleWordVerilatedPeripheral : IDoubleWordPeripheral, IDisposable
     {
-        public BaseDoubleWordVerilatedPeripheral(Machine machine, long frequency, string simulationFilePath = null, ulong limitBuffer = LimitBuffer, double timeout = DefaultTimeout)
+        public BaseDoubleWordVerilatedPeripheral(Machine machine, long frequency, string simulationFilePathLinux = null, string simulationFilePathWindows = null, string simulationFilePathMacOS = null,
+            ulong limitBuffer = LimitBuffer, double timeout = DefaultTimeout)
         {
+            this.machine = machine;
             mainSocket = new CommunicationChannel(timeout);
             asyncEventsSocket = new CommunicationChannel(timeout);
             receiveThread = new Thread(ReceiveLoop)
@@ -38,7 +40,9 @@ namespace Antmicro.Renode.Peripherals.Verilated
             {
                 Send(ActionType.TickClock, 0, limitBuffer);
             };
-            SimulationFilePath = simulationFilePath;
+            SimulationFilePathLinux = simulationFilePathLinux;
+            SimulationFilePathWindows = simulationFilePathWindows;
+            SimulationFilePathMacOS = simulationFilePathMacOS;
         }
 
         public uint ReadDoubleWord(long offset)
@@ -100,6 +104,48 @@ namespace Antmicro.Renode.Peripherals.Verilated
             }
         }
 
+        public string SimulationFilePathLinux
+        {
+            get
+            {
+                return simulationFilePath;
+            }
+            set
+            {
+#if PLATFORM_LINUX
+                SimulationFilePath = value;
+#endif
+            }
+        }
+
+        public string SimulationFilePathWindows
+        {
+            get
+            {
+                return simulationFilePath;
+            }
+            set
+            {
+#if PLATFORM_WINDOWS
+                SimulationFilePath = value;
+#endif
+            }
+        }
+
+        public string SimulationFilePathMacOS
+        {
+            get
+            {
+                return simulationFilePath;
+            }
+            set
+            {
+#if PLATFORM_OSX
+                SimulationFilePath = value;
+#endif
+            }
+        }
+
         public string SimulationFilePath
         {
             get
@@ -108,28 +154,22 @@ namespace Antmicro.Renode.Peripherals.Verilated
             }
             set
             {
-#if !PLATFORM_LINUX
-                simulationFilePath = null; // Otherwise there is the "Field 'simulationFilePath' is never assigned to (...)" warning
-                this.Log(LogLevel.Error, "Running verilated peripherals is only supported on Linux.");
-                return;
-#else
+                if(String.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
                 if(!String.IsNullOrWhiteSpace(simulationFilePath))
                 {
                     throw new RecoverableException("Verilated peripheral already initialized, cannot change the file name");
                 }
                 simulationFilePath = value;
-                if(!String.IsNullOrWhiteSpace(simulationFilePath))
-                {
-                    this.Log(LogLevel.Debug, "Trying to run and connect to '{0}'", simulationFilePath);
-// This directive will be required after enabling verilated peripherals on Windows (by removing the `#if !PLATFORM_LINUX` condition at line 111)
+                this.Log(LogLevel.Debug, "Trying to run and connect to '{0}'", simulationFilePath);
 #if !PLATFORM_WINDOWS
-                    Mono.Unix.Native.Syscall.chmod(simulationFilePath, FilePermissions.S_IRWXU); //setting permissions to 0x700
+                Mono.Unix.Native.Syscall.chmod(simulationFilePath, FilePermissions.S_IRWXU); //setting permissions to 0x700
 #endif
-                    InitVerilatedProcess(simulationFilePath, mainSocket.Port, asyncEventsSocket.Port);
-                    receiveThread.Start();
-                    Handshake();
-                }
-#endif
+                InitVerilatedProcess(simulationFilePath, mainSocket.Port, asyncEventsSocket.Port);
+                receiveThread.Start();
+                Handshake();
             }
         }
 
@@ -137,7 +177,7 @@ namespace Antmicro.Renode.Peripherals.Verilated
         {
             if(!mainSocket.TrySend(new ProtocolMessage(actionId, offset, value)))
             {
-                AbortAndLogError("Connection timeout!");
+                AbortAndLogError("Send timeout!");
             }
         }
 
@@ -153,6 +193,15 @@ namespace Antmicro.Renode.Peripherals.Verilated
                     break;
                 case ActionType.Interrupt:
                     HandleInterrupt(message);
+                    break;
+                case ActionType.PushData:
+                    this.Log(LogLevel.Noisy, "Writing data: 0x{0:X} to address: 0x{1:X}", message.Data, message.Address);
+                    machine.SystemBus.WriteDoubleWord(message.Address, (uint)message.Data);
+                    break;
+                case ActionType.GetData:
+                    this.Log(LogLevel.Noisy, "Requested data from address: 0x{0:X}", message.Address);
+                    var data = machine.SystemBus.ReadDoubleWord(message.Address);
+                    Send(ActionType.WriteToBus, 0, data);
                     break;
             }
         }
@@ -218,7 +267,7 @@ namespace Antmicro.Renode.Peripherals.Verilated
         {
             if(!mainSocket.TryReceive(out var message))
             {
-                AbortAndLogError("Connection timeout!");
+                AbortAndLogError("Receive timeout!");
             }
 
             return message;
@@ -240,6 +289,7 @@ namespace Antmicro.Renode.Peripherals.Verilated
         private readonly CommunicationChannel mainSocket;
         private readonly CommunicationChannel asyncEventsSocket;
         private readonly Thread receiveThread;
+        private readonly Machine machine;
 
         private const string LimitTimerName = "VerilatorIntegrationClock";
     }
