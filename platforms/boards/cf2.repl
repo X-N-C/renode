@@ -1,6 +1,6 @@
 // External peripherals used for the Bitcraze Crazyflie 2.1
 
-using "stm32f405.repl"
+using "platforms/cpus/stm32f405.repl"
 
 gpioPortC:
     0 -> ledRL@0

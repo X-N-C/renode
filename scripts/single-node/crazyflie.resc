@@ -1,7 +1,7 @@
 :description: This script emulates the Bitcraze Crazyflie 2.1 platform and runs the Crazyflie firmware.
 
 mach create "CF2.1"
-machine LoadPlatformDescription @cf2.repl
+machine LoadPlatformDescription @platforms/boards/cf2.repl
 
 # Should be written during production
 sysbus.otp WriteString 0x7800 "0;CF21"
