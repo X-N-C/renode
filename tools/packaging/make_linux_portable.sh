@@ -54,7 +54,7 @@ sed -e 's/$mono_libdir\///g' -i $CONFIG_FILE
 # this tag will be added later
 sed -e '/<\/configuration>/d' -i $CONFIG_FILE
 
-# this seems to be necessary, otherwise Renode crashes on opening tlib.so in docker
+# this seems to be necessary, otherwise Renode crashes on opening tlib
 echo '<dllmap dll="i:dl">' >> $CONFIG_FILE
 echo '  <dllentry dll="__Internal" name="dlopen" target="dlopen"/>' >> $CONFIG_FILE
 echo '</dllmap>' >> $CONFIG_FILE
@@ -147,6 +147,8 @@ gcc \
     -Wl,--wrap=logf  \
     -Wl,--wrap=expf  \
     -Wl,--wrap=getrandom  \
+    -Wl,--wrap=dlopen \
+    -Wl,--wrap=dlsym \
     -fvisibility=hidden \
     -Wl,--export-dynamic \
     $WRAPPER_SOURCE_FILE  \
@@ -162,7 +164,7 @@ gcc \
     -Wl,-Bdynamic `pkg-config --libs-only-l mono-2 | sed -e "s/\-lmono-2.0 //" | sed -e "s/\-lm//" | sed -e "s/\-lrt //"`  \
     $RENODE_ROOT_DIR/lib/resources/libraries/libopenlibm-Linux.a  \
     -static-libgcc \
-    -o $DESTINATION/renode_bundled
+    -o $DESTINATION/renode
 
 # Copy dependencies
 
@@ -177,8 +179,6 @@ cp `find_file libmono-btls-shared.so` $DESTINATION
 cp `find_file libglibsharpglue-2.so` $DESTINATION
 cp `find_file libgtksharpglue-2.so` $DESTINATION
 cp `find_file libgdksharpglue-2.so` $DESTINATION
-
-cp $THIS_DIR/linux_portable/renode $DESTINATION
 
 # Create tar
 mkdir -p ../../output/packages
